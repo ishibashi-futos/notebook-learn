@@ -301,7 +301,7 @@ function buildNavigation() {
         chapterLi.appendChild(chapterTitle);
 
         const unitsUl = document.createElement('ul');
-        unitsUl.className = 'ml-4 mt-1 space-y-1 hidden'; // Initially hidden
+        unitsUl.className = 'ml-4 mt-1 space-y-1 hidden'; 
 
         chapter.units.forEach((unit, unitIndex) => {
             const unitLi = document.createElement('li');
@@ -322,12 +322,24 @@ function buildNavigation() {
         navElement.appendChild(chapterLi);
 
         chapterTitle.onclick = () => {
-            unitsUl.classList.toggle('hidden');
-            chapterTitle.classList.toggle('bg-teal-600');
-            chapterTitle.classList.toggle('text-white');
-            if (!unitsUl.classList.contains('hidden')) {
+            const isActive = chapterTitle.classList.contains('bg-teal-600');
+            document.querySelectorAll('#curriculum-nav > li > div').forEach(el => {
+                el.classList.remove('bg-teal-600', 'text-white');
+                if (el.nextElementSibling && el.nextElementSibling.tagName === 'UL') {
+                    el.nextElementSibling.classList.add('hidden');
+                }
+            });
+            
+            if (!isActive) {
+                unitsUl.classList.remove('hidden');
+                chapterTitle.classList.add('bg-teal-600', 'text-white');
                 displayChapterSummary(chapterIndex);
-                setActiveLink(chapterTitle); // Keep chapter title active if summary is shown
+                setActiveLink(chapterTitle);
+            } else {
+                 unitsUl.classList.add('hidden');
+                 displayIntroduction(); 
+                 const introNavLink = document.querySelector('#curriculum-nav > li:first-child > a');
+                 if (introNavLink) setActiveLink(introNavLink);
             }
         };
     });
@@ -349,14 +361,15 @@ function buildNavigation() {
 function setActiveLink(activeElement) {
     document.querySelectorAll('#curriculum-nav a, #curriculum-nav div[onclick]').forEach(el => {
         el.classList.remove('bg-teal-700', 'text-white', 'font-bold');
-        if (el.parentElement.tagName === 'LI' && el.parentElement.parentElement.id === 'curriculum-nav') { // Chapter titles
-             el.classList.remove('bg-teal-600'); // remove chapter title specific active style
+        if (el.classList.contains('font-semibold')) { 
+             el.classList.remove('bg-teal-600');
         }
     });
-    activeElement.classList.add('bg-teal-700', 'text-white', 'font-bold');
-     if (activeElement.parentElement.tagName === 'LI' && activeElement.parentElement.parentElement.id === 'curriculum-nav' && activeElement.nextElementSibling && activeElement.nextElementSibling.tagName === 'UL') { // Chapter title
-        activeElement.classList.add('bg-teal-600'); // Special active style for chapter title
-        activeElement.classList.remove('bg-teal-700');
+    
+    if (activeElement.classList.contains('font-semibold')) { // Chapter title
+        activeElement.classList.add('bg-teal-600', 'text-white', 'font-bold');
+    } else { // Unit link or intro/conclusion
+        activeElement.classList.add('bg-teal-700', 'text-white', 'font-bold');
     }
 }
 
@@ -379,10 +392,10 @@ function displayChapterSummary(chapterIndex) {
     const chapter = curriculumData.chapters[chapterIndex];
     contentPlaceholder.innerHTML = `
         <h2 class="text-3xl font-bold text-teal-700 mb-4">${chapter.title}</h2>
-        <p class="text-lg mb-6">${chapter.summary}</p>
+        <p class="text-lg mb-6">${chapter.summary.replace(/\n/g, '<br>')}</p>
         <h3 class="text-2xl font-semibold text-teal-600 mb-3">この章のユニット一覧：</h3>
         <ul class="list-disc pl-5 space-y-1">
-            ${chapter.units.map((unit, unitIndex) => `<li><a href="#" onclick="event.preventDefault(); displayUnitContent(${chapterIndex}, ${unitIndex}); setActiveLink(document.querySelector('#curriculum-nav ul li ul li a[onclick*=\\"displayUnitContent(${chapterIndex}, ${unitIndex})\\"]'));" class="text-blue-600 hover:underline">${unit.title}</a></li>`).join('')}
+            ${chapter.units.map((unit, uIndex) => `<li><a href="#" onclick="event.preventDefault(); displayUnitContent(${chapterIndex}, ${uIndex}); setActiveLink(document.querySelector('#curriculum-nav > li:nth-child(${chapterIndex + 2}) ul li:nth-child(${uIndex + 1}) a'));" class="text-blue-600 hover:underline">${unit.title}</a></li>`).join('')}
         </ul>
     `;
 }
@@ -396,23 +409,46 @@ function displayConclusion() {
 }
 
 function formatTextWithCode(text) {
-    // Basic regex to find backticks and replace with <code>, not handling nested or multiline
-    // A more robust parser would be needed for complex cases
-    // This will handle simple inline `code` examples.
-    // For multiline, the Markdown input should ideally use <pre><code> or be structured.
-    // The current data structure separates topics, so multi-line code is less likely in simple topic strings.
-    // If present in explanation, it would need more careful handling or presumes HTML in source.
-    // Given the source, it's mainly inline.
-    return text.replace(/`([^`]+)`/g, '<code class="bg-stone-200 px-1 rounded text-sm font-mono text-red-700">$1</code>');
+    if (typeof text !== 'string') return '';
+    let formattedText = text.replace(/`([^`]+)`/g, '<code class="bg-stone-200 px-1 rounded text-sm font-mono text-red-700">$1</code>');
+    formattedText = formattedText.replace(/\n    -/g, '<ul><li class="ml-4">');
+    formattedText = formattedText.replace(/\n(?!<\/ul><li>|<\/ul>)/g, '</li></ul><li class="ml-4">');
+    formattedText = formattedText.replace(/<\/li><\/ul><li class="ml-4">/g, '</li><li class="ml-4">');
+    
+    if (formattedText.includes('<ul><li class="ml-4">') && !formattedText.endsWith('</li></ul>')) {
+        if (formattedText.endsWith('</li>')) {
+            formattedText += '</ul>';
+        } else if (formattedText.endsWith('<li class="ml-4">')) {
+             formattedText = formattedText.substring(0, formattedText.length - '<li class="ml-4">'.length) + '</ul>';
+        } else {
+            formattedText += '</li></ul>';
+        }
+    }
+    return formattedText;
 }
 
 function displayUnitContent(chapterIndex, unitIndex) {
     clearPreviousCharts();
     const unit = curriculumData.chapters[chapterIndex].units[unitIndex];
-    let topicsHtml = unit.topics.map(topic => `<li>${formatTextWithCode(topic)}</li>`).join('');
-    // For multiline items within topics array (e.g. from Unit 1.3)
-    topicsHtml = topicsHtml.replace(/\n\s*-/g, '<ul><li class="ml-4">').replace(/\n(?!<\/ul>)/g, '</li></ul><li class="ml-4">') // simplistic conversion, might need refinement
-                  .replace(/<\/li><\/ul><li class="ml-4">/g, '</li><li class="ml-4">');
+    
+    let topicsHtml = unit.topics.map(topic => {
+        let itemContent = formatTextWithCode(topic);
+        // Handle multi-line list items within a single topic string
+        if (itemContent.includes('\n')) {
+            itemContent = itemContent.split('\n').map(line => {
+                line = line.trim();
+                if (line.startsWith('- ')) {
+                    return `<li class="ml-4">${formatTextWithCode(line.substring(2))}</li>`;
+                }
+                return formatTextWithCode(line); 
+            }).join('');
+             // If it became a list, wrap with <ul>
+            if (itemContent.includes('<li class="ml-4">')) {
+                itemContent = `<ul>${itemContent}</ul>`;
+            }
+        }
+        return `<li>${itemContent}</li>`;
+    }).join('');
 
 
     contentPlaceholder.innerHTML = `
@@ -425,7 +461,7 @@ function displayUnitContent(chapterIndex, unitIndex) {
         </section>
 
         <section class="mb-6">
-            <details class="bg-white p-4 rounded shadow">
+            <details class="bg-white p-4 rounded shadow" open>
                 <summary class="text-xl font-semibold text-teal-600">主要トピック</summary>
                 <ul class="list-disc pl-5 mt-2 space-y-1 prose max-w-none">
                     ${topicsHtml}
@@ -436,7 +472,7 @@ function displayUnitContent(chapterIndex, unitIndex) {
         <section class="mb-6">
             <details class="bg-white p-4 rounded shadow">
                 <summary class="text-xl font-semibold text-teal-600">解説</summary>
-                <div class="mt-2 prose max-w-none">${formatTextWithCode(unit.explanation).replace(/\n/g, '<br>')}</div>
+                <div class="mt-2 prose max-w-none">${formatTextWithCode(unit.explanation).replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>')}</div>
             </details>
         </section>
 
@@ -468,21 +504,14 @@ function displayUnitContent(chapterIndex, unitIndex) {
             chartWrapper.appendChild(chartContainer);
             chartsArea.appendChild(chartWrapper);
 
-            // Ensure options for Chart.js are well-defined
             const options = config.options || {};
             options.responsive = true;
             options.maintainAspectRatio = false;
 
-            // Label wrapping logic for x-axis
-            if (options.scales && options.scales.x && options.scales.x.ticks === undefined) {
-                 options.scales.x.ticks = {};
-            } else if (options.scales && options.scales.x === undefined) {
-                 options.scales.x = { ticks: {} };
-            } else if (options.scales === undefined) {
-                options.scales = { x: { ticks: {} } };
-            }
-            
-            options.scales.x.ticks.callback = function(value, index, values) {
+            if (!options.scales) options.scales = {};
+            if (!options.scales.x) options.scales.x = {};
+            if (!options.scales.x.ticks) options.scales.x.ticks = {};
+            options.scales.x.ticks.callback = function(value) {
                 const label = this.getLabelForValue(value);
                 if (typeof label === 'string' && label.length > 16) {
                     const parts = [];
@@ -494,29 +523,19 @@ function displayUnitContent(chapterIndex, unitIndex) {
                 return label;
             };
             
-            // Label wrapping logic for y-axis (if needed)
-            if (options.scales && options.scales.y && options.scales.y.ticks === undefined) {
-                 options.scales.y.ticks = {};
-            } else if (options.scales && options.scales.y === undefined) {
-                 options.scales.y = { ticks: {} };
-            } else if (options.scales === undefined && !options.scales.y) { // if scales exists but not y
-                if(options.scales.x) options.scales.y = { ticks: {} };
-                else options.scales = { y: { ticks: {} } }; // if scales doesn't exist at all
-            }
-             if (options.scales && options.scales.y && options.scales.y.ticks) {
-                options.scales.y.ticks.callback = function(value, index, values) {
-                    const label = this.getLabelForValue(value);
-                    if (typeof label === 'string' && label.length > 16) {
-                        const parts = [];
-                        for (let i = 0; i < label.length; i += 16) {
-                            parts.push(label.substring(i, i + 16));
-                        }
-                        return parts;
+            if (!options.scales.y) options.scales.y = {};
+            if (!options.scales.y.ticks) options.scales.y.ticks = {};
+            options.scales.y.ticks.callback = function(value) {
+                 const label = this.getLabelForValue(value);
+                 if (typeof label === 'string' && label.length > 16) {
+                    const parts = [];
+                    for (let i = 0; i < label.length; i += 16) {
+                        parts.push(label.substring(i, i + 16));
                     }
-                    return label;
-                };
-            }
-
+                    return parts;
+                }
+                return label;
+            };
 
             const chart = new Chart(
                 document.getElementById(config.id),
@@ -529,13 +548,29 @@ function displayUnitContent(chapterIndex, unitIndex) {
             currentCharts.push(chart);
         });
     }
+     // Ensure details sections are open by default if they were open before, or for the first time.
+    document.querySelectorAll('#main-content-area details').forEach(detail => {
+        if (!detail.hasAttribute('data-user-closed')) {
+            detail.open = true;
+        }
+    });
+    // Add event listener to track user interaction with details
+    document.querySelectorAll('#main-content-area details').forEach(detail => {
+        detail.addEventListener('toggle', function() {
+            if (!this.open) {
+                this.setAttribute('data-user-closed', 'true');
+            } else {
+                this.removeAttribute('data-user-closed');
+            }
+        });
+    });
 }
 
 
 document.addEventListener('DOMContentLoaded', () => {
     buildNavigation();
-    displayIntroduction(); // Show introduction by default
-    const firstNavLink = document.querySelector('#curriculum-nav a');
+    displayIntroduction(); 
+    const firstNavLink = document.querySelector('#curriculum-nav > li:first-child > a');
     if (firstNavLink) {
         setActiveLink(firstNavLink);
     }
