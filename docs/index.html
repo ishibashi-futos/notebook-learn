@@ -382,7 +382,10 @@ function clearPreviousCharts() {
 function displayIntroduction() {
     clearPreviousCharts();
     contentPlaceholder.innerHTML = `
-        <h2 class="text-3xl font-bold text-teal-700 mb-4">${curriculumData.introduction.title}</h2>
+        <div class="flex justify-between items-center mb-2">
+             <h2 class="text-3xl font-bold text-teal-700">${curriculumData.introduction.title}</h2>
+        </div>
+        <hr class="mb-6">
         <div class="prose max-w-none">${curriculumData.introduction.content.replace(/\n/g, '<br>')}</div>
     `;
 }
@@ -391,7 +394,10 @@ function displayChapterSummary(chapterIndex) {
     clearPreviousCharts();
     const chapter = curriculumData.chapters[chapterIndex];
     contentPlaceholder.innerHTML = `
-        <h2 class="text-3xl font-bold text-teal-700 mb-4">${chapter.title}</h2>
+        <div class="flex justify-between items-center mb-2">
+            <h2 class="text-3xl font-bold text-teal-700">${chapter.title}</h2>
+        </div>
+        <hr class="mb-6">
         <p class="text-lg mb-6">${chapter.summary.replace(/\n/g, '<br>')}</p>
         <h3 class="text-2xl font-semibold text-teal-600 mb-3">この章のユニット一覧：</h3>
         <ul class="list-disc pl-5 space-y-1">
@@ -403,61 +409,126 @@ function displayChapterSummary(chapterIndex) {
 function displayConclusion() {
     clearPreviousCharts();
     contentPlaceholder.innerHTML = `
-        <h2 class="text-3xl font-bold text-teal-700 mb-4">${curriculumData.conclusion.title}</h2>
+        <div class="flex justify-between items-center mb-2">
+            <h2 class="text-3xl font-bold text-teal-700">${curriculumData.conclusion.title}</h2>
+        </div>
+        <hr class="mb-6">
         <div class="prose max-w-none">${curriculumData.conclusion.content.replace(/\n/g, '<br>')}</div>
     `;
 }
 
-function formatTextWithCode(text) {
+function formatTextToHtml(text) {
     if (typeof text !== 'string') return '';
+    // `code` like content
     let formattedText = text.replace(/`([^`]+)`/g, '<code class="bg-stone-200 px-1 rounded text-sm font-mono text-red-700">$1</code>');
-    formattedText = formattedText.replace(/\n    -/g, '<ul><li class="ml-4">');
-    formattedText = formattedText.replace(/\n(?!<\/ul><li>|<\/ul>)/g, '</li></ul><li class="ml-4">');
-    formattedText = formattedText.replace(/<\/li><\/ul><li class="ml-4">/g, '</li><li class="ml-4">');
-    
-    if (formattedText.includes('<ul><li class="ml-4">') && !formattedText.endsWith('</li></ul>')) {
-        if (formattedText.endsWith('</li>')) {
+    // Handle lists starting with \n    - 
+    formattedText = formattedText.replace(/\n    - /g, '<ul><li class="ml-4">'); // Start of a sub-list
+    // Handle subsequent items in the sub-list or simple newlines
+    formattedText = formattedText.replace(/\n(?!<\/ul><li>|<\/ul>)(    )?/g, (match, p1) => {
+        if (p1) return '</li><li class="ml-4">'; // next item in sublist
+        return '<br>'; // simple newline
+    });
+    // Close any open ul if it was started
+    if (formattedText.includes('<ul><li class="ml-4">') && !formattedText.endsWith('</ul>')) {
+         if (formattedText.endsWith('</li>')) {
             formattedText += '</ul>';
-        } else if (formattedText.endsWith('<li class="ml-4">')) {
-             formattedText = formattedText.substring(0, formattedText.length - '<li class="ml-4">'.length) + '</ul>';
         } else {
-            formattedText += '</li></ul>';
+             formattedText = formattedText.replace(/<li class="ml-4">([^<]*)$/, '<li class="ml-4">$1</li></ul>');
         }
     }
     return formattedText;
 }
+
+
+function getUnitAsMarkdown(unit) {
+    let markdownString = `# ${unit.title}\n\n`;
+    markdownString += `## 学習目標\n\n${unit.goal}\n\n`;
+
+    markdownString += `## 主要トピック\n\n`;
+    unit.topics.forEach(topic => {
+        const lines = topic.split('\n');
+        const firstLine = lines[0].replace(/`([^`]+)`/g, '`$1`'); // Keep backticks for code in Markdown
+        markdownString += `- ${firstLine}\n`;
+        if (lines.length > 1) {
+            for (let i = 1; i < lines.length; i++) {
+                const subItem = lines[i].replace(/^    - /, '  - ').replace(/`([^`]+)`/g, '`$1`');
+                markdownString += `${subItem}\n`;
+            }
+        }
+    });
+
+    markdownString += `\n## 解説\n\n${unit.explanation.replace(/`([^`]+)`/g, '`$1`')}\n\n`;
+    markdownString += `## 演習のヒント\n\n${unit.exerciseHint.replace(/`([^`]+)`/g, '`$1`')}\n\n`;
+    return markdownString;
+}
+
+function copyMarkdownToClipboard(chapterIndex, unitIndex) {
+    const unit = curriculumData.chapters[chapterIndex].units[unitIndex];
+    const markdownText = getUnitAsMarkdown(unit);
+
+    const textarea = document.createElement('textarea');
+    textarea.value = markdownText;
+    textarea.style.position = 'fixed'; // Prevent scrolling to bottom of page in MS Edge.
+    textarea.style.left = '-9999px'; // Move out of screen
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+        document.execCommand('copy');
+        const copyButton = document.getElementById('copy-markdown-btn');
+        if (copyButton) {
+            const originalText = copyButton.textContent;
+            copyButton.textContent = 'Copied!';
+            copyButton.classList.remove('bg-sky-500', 'hover:bg-sky-600');
+            copyButton.classList.add('bg-green-500');
+            setTimeout(() => {
+                copyButton.textContent = originalText;
+                copyButton.classList.remove('bg-green-500');
+                copyButton.classList.add('bg-sky-500', 'hover:bg-sky-600');
+            }, 2000);
+        }
+    } catch (err) {
+        console.error('クリップボードへのコピーに失敗しました:', err);
+        const copyButton = document.getElementById('copy-markdown-btn');
+        if (copyButton) {
+            const originalText = copyButton.textContent;
+            copyButton.textContent = 'コピー失敗';
+            copyButton.classList.remove('bg-sky-500', 'hover:bg-sky-600');
+            copyButton.classList.add('bg-red-500');
+             setTimeout(() => {
+                copyButton.textContent = originalText;
+                copyButton.classList.remove('bg-red-500');
+                copyButton.classList.add('bg-sky-500', 'hover:bg-sky-600');
+            }, 2000);
+        }
+    }
+    document.body.removeChild(textarea);
+}
+
 
 function displayUnitContent(chapterIndex, unitIndex) {
     clearPreviousCharts();
     const unit = curriculumData.chapters[chapterIndex].units[unitIndex];
     
     let topicsHtml = unit.topics.map(topic => {
-        let itemContent = formatTextWithCode(topic);
-        // Handle multi-line list items within a single topic string
-        if (itemContent.includes('\n')) {
-            itemContent = itemContent.split('\n').map(line => {
-                line = line.trim();
-                if (line.startsWith('- ')) {
-                    return `<li class="ml-4">${formatTextWithCode(line.substring(2))}</li>`;
-                }
-                return formatTextWithCode(line); 
-            }).join('');
-             // If it became a list, wrap with <ul>
-            if (itemContent.includes('<li class="ml-4">')) {
-                itemContent = `<ul>${itemContent}</ul>`;
-            }
-        }
-        return `<li>${itemContent}</li>`;
+        return `<li>${formatTextToHtml(topic)}</li>`;
     }).join('');
 
 
     contentPlaceholder.innerHTML = `
-        <h2 class="text-3xl font-bold text-teal-700 mb-2">${unit.title}</h2>
+        <div class="flex justify-between items-center mb-2">
+            <h2 class="text-3xl font-bold text-teal-700">${unit.title}</h2>
+            <button id="copy-markdown-btn" 
+                    data-chapter-index="${chapterIndex}" 
+                    data-unit-index="${unitIndex}"
+                    class="bg-sky-500 hover:bg-sky-600 text-white font-semibold py-2 px-3 rounded text-sm transition-colors duration-150 ease-in-out">
+                Copy
+            </button>
+        </div>
         <hr class="mb-6">
 
         <section class="mb-6">
             <h3 class="text-xl font-semibold text-teal-600 mb-2">学習目標</h3>
-            <p>${formatTextWithCode(unit.goal)}</p>
+            <p>${formatTextToHtml(unit.goal)}</p>
         </section>
 
         <section class="mb-6">
@@ -472,18 +543,28 @@ function displayUnitContent(chapterIndex, unitIndex) {
         <section class="mb-6">
             <details class="bg-white p-4 rounded shadow">
                 <summary class="text-xl font-semibold text-teal-600">解説</summary>
-                <div class="mt-2 prose max-w-none">${formatTextWithCode(unit.explanation).replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>')}</div>
+                <div class="mt-2 prose max-w-none">${formatTextToHtml(unit.explanation).replace(/\n\n/g, '<br><br>').replace(/\n(?!<br>)/g, '<br>')}</div>
             </details>
         </section>
 
         <section class="mb-6">
             <details class="bg-white p-4 rounded shadow">
                 <summary class="text-xl font-semibold text-teal-600">演習のヒント</summary>
-                <div class="mt-2 prose max-w-none">${formatTextWithCode(unit.exerciseHint).replace(/\n/g, '<br>')}</div>
+                <div class="mt-2 prose max-w-none">${formatTextToHtml(unit.exerciseHint).replace(/\n/g, '<br>')}</div>
             </details>
         </section>
         <div id="charts-area" class="mt-8 space-y-8"></div>
     `;
+    
+    const copyButton = document.getElementById('copy-markdown-btn');
+    if (copyButton) {
+        copyButton.addEventListener('click', () => {
+            const chapIdx = parseInt(copyButton.dataset.chapterIndex);
+            const unitIdx = parseInt(copyButton.dataset.unitIndex);
+            copyMarkdownToClipboard(chapIdx, unitIdx);
+        });
+    }
+
 
     if (unit.chartConfigs) {
         const chartsArea = document.getElementById('charts-area');
@@ -548,13 +629,11 @@ function displayUnitContent(chapterIndex, unitIndex) {
             currentCharts.push(chart);
         });
     }
-     // Ensure details sections are open by default if they were open before, or for the first time.
     document.querySelectorAll('#main-content-area details').forEach(detail => {
         if (!detail.hasAttribute('data-user-closed')) {
             detail.open = true;
         }
     });
-    // Add event listener to track user interaction with details
     document.querySelectorAll('#main-content-area details').forEach(detail => {
         detail.addEventListener('toggle', function() {
             if (!this.open) {
