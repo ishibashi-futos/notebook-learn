@@ -39,6 +39,8 @@ const server = http.createServer((req, res) => {
             }
             resEnd(res, requestId, startTime, method, url, 200, [{
                 name: 'Content-Type', value: 'text/html'
+            }, {
+                name: 'Cache-Control', value: 'no-cache, no-store, must-revalidate'
             }], data);
         });
     } else {
